@@ -1,27 +1,44 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+
 export async function POST(req: Request) {
     try {
-        const { outline, topic, faculty } = await req.json();
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const { topic, faculty, standard, fullThesis, outline } = await req.json();
 
-        // We send the entire outline so the AI maintains context between sections
-        const prompt = `You are an Academic Writer. Use the following outline to write a comprehensive, 2,000-word academic report on "${topic}" for the ${faculty} department.
-    
-    OUTLINE: ${JSON.stringify(outline)}
-    
-    INSTRUCTIONS:
-    1. Write in a formal, third-person academic tone.
-    2. Use LaTeX for any mathematical formulas.
-    3. Ensure smooth transitions between sections.
-    4. Provide the full text in professional Markdown format.`;
+        // Determine the scope: 1 chapter for Sample, 5 for Full [cite: 19]
+        const scope = fullThesis ? "Chapters 1 to 5" : "Chapter 1 (Introduction) ONLY";
+
+        // Construct formatting rules based on the school 
+        const formattingRules = `
+      Follow ${standard} academic formatting. 
+      Use Times New Roman style structure. 
+      Ensure citations follow APA 7th edition (standard for Nigerian universities). 
+      Check all facts against real-world data to avoid hallucinations. [cite: 11]
+    `;
+
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+
+        const prompt = `
+      You are an Autonomous Academic Architect. Generate a ${scope} for a project titled: "${topic}".
+      Faculty: ${faculty}.
+      University Guide: ${standard}.
+      ${formattingRules}
+      
+      Structure:
+      ${JSON.stringify(outline)}
+
+      IMPORTANT: If this is a sample, provide an incredibly high-quality Chapter 1 to encourage an upgrade. [cite: 30]
+    `;
 
         const result = await model.generateContent(prompt);
         const response = await result.response;
-        return NextResponse.json({ fullText: response.text() });
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const text = response.text();
+
+        return NextResponse.json({ fullText: text });
+    } catch (error) {
+        console.error(error);
+        return NextResponse.json({ error: "Failed to generate content" }, { status: 500 });
     }
 }
