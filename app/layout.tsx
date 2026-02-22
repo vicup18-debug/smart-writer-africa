@@ -40,6 +40,7 @@ export default function RootLayout({
           }
         }} />
         {children}
+        <script src="https://js.paystack.co/v1/inline.js"></script>
       </body>
     </html>
   );

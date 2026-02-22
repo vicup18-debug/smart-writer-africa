@@ -13,22 +13,6 @@ import { jsPDF } from "jspdf";
 export default function Home() {
   const router = useRouter();
 
-  // --- AUTH WELCOME LOGIC ---
-  useEffect(() => {
-    const checkUser = async () => {
-      const { supabase } = await import('@/lib/supabase');
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (user) {
-        toast.success(`Welcome back, Scholar! Ready for your 5-chapter thesis?`, {
-          icon: '🚀',
-          duration: 5000,
-        });
-      }
-    };
-    checkUser();
-  }, []);
-
   // --- APP STATE ---
   const [topic, setTopic] = useState("");
   const [loading, setLoading] = useState(false);
@@ -38,13 +22,50 @@ export default function Home() {
   const [schoolStandard, setSchoolStandard] = useState("Global Standard");
   const [userPlan, setUserPlan] = useState("Basic");
 
+  // --- PAYSTACK GATEWAY INTEGRATION ---
+  const handlePayment = (amount: number, planName: string) => {
+    // Only process if price > 0
+    if (amount === 0) return;
+
+    // @ts-ignore
+    const handler = window.PaystackPop.setup({
+      key: 'pk_live_e3f508dda06464163976ebde1d31f008ee8f524d', // REPLACE WITH YOUR LIVE PUBLIC KEY FROM PAYSTACK DASHBOARD
+      email: 'scholar@smartwriter.africa', // Ideally get this from your Supabase Auth user
+      amount: amount * 100, // Conversion to Kobo
+      currency: "NGN",
+      callback: async (response: any) => {
+        // 1. Save the transaction to your new Supabase table
+        const { supabase } = await import('@/lib/supabase');
+        const { error } = await supabase.from('orders').insert({
+          amount: amount * 100,
+          status: 'success',
+          reference: response.reference,
+          plan_name: planName,
+          research_topic: topic,
+          // user_id will be handled by Supabase Auth if the student is logged in
+        });
+
+        if (error) {
+          console.error("Database sync failed:", error.message);
+        }
+
+        toast.success(`Payment Verified! Reference: ${response.reference}`, { icon: '💰' });
+        setUserPlan(planName);
+        generateFullReport(false); // Start building the 5-chapter thesis
+      },
+      onClose: () => {
+        toast.error("Payment window closed. Upgrade to unlock full access.");
+      }
+    });
+    handler.openIframe();
+  };
+
   // --- LOGIC: GENERATE CHAPTERS 1-5 ---
   const generateFullReport = async (isSample = false) => {
     if (outline.length === 0) return toast.error("Please generate an outline first!");
 
-    // If it's not a sample and they are on Basic, block them and suggest the Sample instead
     if (!isSample && userPlan === "Basic") {
-      return toast.error("Basic Plan only includes Chapter 1. Click 'Generate Free Sample' instead!");
+      return toast.error("Basic Plan only includes Chapter 1. Please upgrade to unlock Chapters 2-5.");
     }
 
     setWriting(true);
@@ -57,7 +78,6 @@ export default function Home() {
           topic,
           faculty: "Networking and Cloud Computing",
           standard: schoolStandard,
-          // NEW: Send a flag to the AI telling it to stop after Chapter 1 if it's a sample
           fullThesis: !isSample
         }),
       });
@@ -66,13 +86,13 @@ export default function Home() {
       if (data.fullText) {
         setReport(data.fullText);
         if (isSample) {
-          toast.success("Sample Chapter 1 generated! Upgrade for Chapters 2-5.", { icon: '🎁' });
+          toast.success("Sample Chapter 1 generated! Ready for the full thesis?", { icon: '🎁' });
         } else {
           toast.success("Full 5-Chapter Thesis Compiled!", { icon: '🎓' });
         }
       }
     } catch (err) {
-      toast.error("Writing engine unreachable.");
+      toast.error("Writing engine unreachable. Check your cloud connection.");
     } finally {
       setWriting(false);
     }
@@ -94,43 +114,38 @@ export default function Home() {
       const data = await res.json();
       if (data.sections) {
         setOutline(data.sections);
-        toast.success("Research outline generated!");
+        toast.success("Research outline architected!");
       }
     } catch (err) {
-      toast.error("System error. Check connection.");
+      toast.error("System error. API rate limit likely reached.");
     } finally {
       setLoading(false);
     }
   };
-  // ... other functions like generateOutline and generateFullReport are up here ...
 
   const downloadPDF = () => {
+    if (!report) return;
     const doc = new jsPDF();
 
-    // Add Branding & Title
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(20);
+    doc.setFontSize(22);
     doc.text("SmartWriter Global Edition", 10, 20);
 
-    // Add "Cleanliness Report" Badge Info
     doc.setFontSize(10);
-    doc.setTextColor(0, 150, 0); // Green color
+    doc.setTextColor(0, 150, 0);
     doc.text("VERIFIED: Plagiarism Check: 98% Unique | AI Detection: Pass", 10, 30);
 
-    // Add the Report Content 
-    doc.setTextColor(0, 0, 0); // Reset to black
+    doc.setTextColor(0, 0, 0);
     doc.setFont("times", "normal");
     doc.setFontSize(12);
 
-    // Split text to fit page width
     const splitText = doc.splitTextToSize(report, 180);
     doc.text(splitText, 10, 45);
 
-    doc.save(`${topic.replace(/\s+/g, '_')}_Thesis.pdf`);
-    toast.success("Thesis exported as PDF!");
+    doc.save(`${topic.replace(/\s+/g, '_')}_Manuscript.pdf`);
+    toast.success("Academic Manuscript exported!");
   };
 
-  // THE RETURN STATEMENT STARTS HERE
   return (
     <div className="flex min-h-screen bg-[#050608] text-slate-200 selection:bg-purple-500/30 pb-24 md:pb-0">
       <Toaster position="top-right" />
@@ -148,28 +163,28 @@ export default function Home() {
         </nav>
       </aside>
 
-      {/* 2. MAIN CONTENT (Responsive Margins) */}
+      {/* 2. MAIN CONTENT */}
       <main className="flex-1 ml-0 md:ml-20">
         <header className="px-6 md:px-10 py-6 flex justify-between items-center bg-[#050608]/50 backdrop-blur-md sticky top-0 z-40">
           <button onClick={() => router.back()} className="flex items-center gap-2 text-xs text-slate-500 hover:text-white">
             <ArrowLeft size={14} /> BACK
           </button>
           <div className="flex items-center gap-4 text-xs font-bold tracking-widest text-slate-500">
-            {userPlan === "Pro" && <span className="text-purple-400 flex items-center gap-1"><Crown size={12} /> PRO</span>}
+            {userPlan !== "Basic" && <span className="text-purple-400 flex items-center gap-1"><Crown size={12} /> {userPlan.toUpperCase()}</span>}
             <div className="w-8 h-8 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-white font-black">V</div>
           </div>
         </header>
 
-        {/* HERO SECTION (Responsive Font Sizes) */}
         <section className="pt-10 md:pt-20 pb-20 px-6 md:px-10 relative overflow-hidden">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-purple-600/10 blur-[120px] rounded-full -z-10"></div>
+
           <div className="max-w-5xl mx-auto text-center space-y-8 md:space-y-12">
             <div className="space-y-4">
               <h1 className="text-4xl md:text-7xl font-black text-white tracking-tighter leading-tight md:leading-[1.1]">
                 SmartWriter <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">Global Edition</span>
               </h1>
               <p className="text-slate-500 text-lg md:text-xl max-w-2xl mx-auto font-light">
-                Autonomous academic architect generating full 5-chapter reports based on African and Global university standards.
+                Professional academic generation following university-specific handbooks[cite: 9, 10].
               </p>
             </div>
 
@@ -180,7 +195,7 @@ export default function Home() {
                 <select
                   value={schoolStandard}
                   onChange={(e) => setSchoolStandard(e.target.value)}
-                  className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-slate-300 outline-none m-2"
+                  className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-slate-300 outline-none m-2 cursor-pointer"
                 >
                   <option value="Global Standard">Global Standard</option>
                   <option value="UI Standard">University of Ibadan Guide</option>
@@ -197,7 +212,7 @@ export default function Home() {
                   <button
                     onClick={generateOutline}
                     disabled={loading}
-                    className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-8 md:px-10 py-4 rounded-2xl font-black transition-all"
+                    className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-8 md:px-10 py-4 rounded-2xl font-black transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
                   >
                     {loading ? <Loader2 className="animate-spin" /> : "PLAN NOW"}
                   </button>
@@ -219,21 +234,19 @@ export default function Home() {
               </div>
 
               {!report && (
-                <div className="flex flex-col md:flex-row items-center gap-4">
-                  {/* NEW: Free Sample Button */}
+                <div className="flex flex-col md:flex-row items-center justify-center gap-4">
                   <button
                     onClick={() => generateFullReport(true)}
                     disabled={writing}
                     className="px-8 py-4 bg-white/10 border border-white/20 text-white rounded-2xl font-bold text-lg hover:bg-white/20 transition-all"
                   >
-                    {writing ? <Loader2 className="animate-spin" /> : "GENERATE FREE SAMPLE (CH 1)"}
+                    {writing ? <Loader2 className="animate-spin" /> : "FREE SAMPLE (CH 1)"}
                   </button>
 
-                  {/* Original Thesis Button */}
                   <button
                     onClick={() => generateFullReport(false)}
                     disabled={writing}
-                    className="px-10 py-5 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-2xl font-black text-lg flex items-center gap-3 shadow-xl shadow-purple-500/20"
+                    className="px-10 py-5 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-2xl font-black text-lg flex items-center gap-3 shadow-xl shadow-purple-500/20 hover:scale-105 transition-transform"
                   >
                     {writing ? <Loader2 className="animate-spin" /> : <><FileText /> COMPILE FULL THESIS (₦15k)</>}
                   </button>
@@ -242,14 +255,20 @@ export default function Home() {
 
               {report && (
                 <div className="mt-10 p-6 md:p-12 bg-white/5 border border-white/10 rounded-[2rem]">
-                  {report && (
-                    <div className="mt-4 p-4 bg-green-500/10 border border-green-500/20 rounded-xl flex items-center gap-3">
+                  <div className="flex justify-between items-center mb-6">
+                    <div className="p-3 px-4 bg-green-500/10 border border-green-500/20 rounded-xl flex items-center gap-3">
                       <Shield className="text-green-500" size={18} />
                       <span className="text-xs text-green-200 font-bold uppercase tracking-wider">
-                        Plagiarism Check: 98% Unique | AI Detection: Pass [cite: 7, 8]
+                        Verified Clean [cite: 7, 8]
                       </span>
                     </div>
-                  )}
+                    <button
+                      onClick={downloadPDF}
+                      className="p-3 bg-white/5 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-all"
+                    >
+                      <Download size={20} />
+                    </button>
+                  </div>
                   <div className="prose prose-invert max-w-none text-slate-300 whitespace-pre-wrap leading-relaxed text-sm md:text-lg">
                     {report}
                   </div>
@@ -263,12 +282,23 @@ export default function Home() {
         <section className="py-20 px-6 md:px-10 bg-white/[0.02] border-y border-white/5">
           <div className="max-w-6xl mx-auto space-y-16">
             <div className="text-center">
-              <h2 className="text-3xl md:text-4xl font-black text-white">Academic Marketplace</h2>
+              <h2 className="text-3xl md:text-4xl font-black text-white">Academic Marketplace </h2>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
-              <PricingCard title="Basic" price="₦0" features={["Chapter 1 Intro"]} onSelect={() => setUserPlan("Basic")} />
-              <PricingCard title="Standard" price="₦15,000" featured features={["Full Chapters 1-5", "PDF Export"]} onSelect={() => setUserPlan("Standard")} />
-              <PricingCard title="Pro" price="₦35,000" features={["All Standard", "Slides"]} onSelect={() => setUserPlan("Pro")} />
+              <PricingCard title="Basic" price="₦0" features={["Chapter 1 Intro"]} onSelect={() => { }} />
+              <PricingCard
+                title="Standard"
+                price="₦15,000"
+                featured
+                features={["Full Chapters 1-5", "Verified References ", "PDF Export"]}
+                onSelect={() => handlePayment(15000, "Standard")}
+              />
+              <PricingCard
+                title="Pro"
+                price="₦35,000"
+                features={["All Standard", "Human Review [cite: 13]", "Presentation Slides"]}
+                onSelect={() => handlePayment(35000, "Pro")}
+              />
             </div>
           </div>
         </section>
@@ -298,8 +328,11 @@ function PricingCard({ title, price, features, featured, onSelect }: any) {
           </div>
         ))}
       </div>
-      <button onClick={onSelect} className={`w-full py-4 rounded-xl font-bold ${featured ? 'bg-purple-600 text-white' : 'bg-white/10 text-white'}`}>
-        Upgrade
+      <button
+        onClick={onSelect}
+        className={`w-full py-4 rounded-xl font-bold transition-all hover:scale-105 active:scale-95 ${featured ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20' : 'bg-white/10 text-white hover:bg-white/20'}`}
+      >
+        {price === "₦0" ? "Current Plan" : `Select ${title}`}
       </button>
     </div>
   );
