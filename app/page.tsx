@@ -9,6 +9,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast, { Toaster } from 'react-hot-toast';
 import { jsPDF } from "jspdf";
+declare global {
+  interface Window {
+    PaystackPop: any;
+  }
+}
 
 export default function Home() {
   const router = useRouter();
@@ -22,42 +27,56 @@ export default function Home() {
   const [schoolStandard, setSchoolStandard] = useState("Global Standard");
   const [userPlan, setUserPlan] = useState("Basic");
 
+  const saveToDatabase = async (reference: string, planName: string, amount: number, topic: string) => {
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { data: { user } } = await supabase.auth.getUser();
+
+      const { error } = await supabase.from('orders').insert({
+        reference,
+        plan_name: planName,
+        amount: amount * 100, // Converts to Kobo for admin display logic
+        research_topic: topic || "Untitled Research",
+        status: 'success',
+        user_id: user?.id || null,
+      });
+
+      if (error) throw error;
+
+      setUserPlan(planName);
+      toast.success("Transaction verified & plan upgraded!");
+    } catch (err) {
+      console.error("Supabase Error:", err);
+      toast.error("Payment successful but database sync failed.");
+    }
+  };
+
   // --- PAYSTACK GATEWAY INTEGRATION ---
-  const handlePayment = (amount: number, planName: string) => {
-    // Only process if price > 0
-    if (amount === 0) return;
+  const handlePayment = (planName: string, amount: number) => {
+    // 1. Check if the script is loaded
+    if (!window.PaystackPop) {
+      toast.error("Payment system is still loading. Please refresh.");
+      return;
+    }
 
-    // @ts-ignore
     const handler = window.PaystackPop.setup({
-      key: 'pk_live_e3f508dda06464163976ebde1d31f008ee8f524d', // REPLACE WITH YOUR LIVE PUBLIC KEY FROM PAYSTACK DASHBOARD
-      email: 'scholar@smartwriter.africa', // Ideally get this from your Supabase Auth user
-      amount: amount * 100, // Conversion to Kobo
+      key: 'pk_live_e3f508dda06464163976ebde1d31f008ee8f524d', // Your Live Key
+      email: 'scholar@smartwriter.africa', // Replace with dynamic user email
+      amount: amount * 100, // Converts Naira to Kobo
       currency: "NGN",
-      callback: async (response: any) => {
-        // 1. Save the transaction to your new Supabase table
-        const { supabase } = await import('@/lib/supabase');
-        const { error } = await supabase.from('orders').insert({
-          amount: amount * 100,
-          status: 'success',
-          reference: response.reference,
-          plan_name: planName,
-          research_topic: topic,
-          // user_id will be handled by Supabase Auth if the student is logged in
-        });
+      callback: function (response: any) {
+        // This runs after successful payment
+        toast.success("Payment Received! Syncing with Soma Concepts...");
 
-        if (error) {
-          console.error("Database sync failed:", error.message);
-        }
-
-        toast.success(`Payment Verified! Reference: ${response.reference}`, { icon: '💰' });
-        setUserPlan(planName);
-        generateFullReport(false); // Start building the 5-chapter thesis
+        // Move the Supabase saving logic here
+        saveToDatabase(response.reference, planName, amount, topic);
       },
-      onClose: () => {
-        toast.error("Payment window closed. Upgrade to unlock full access.");
+      onClose: function () {
+        toast.error("Transaction cancelled.");
       }
     });
-    handler.openIframe();
+
+    handler.openIframe(); // This is the command that makes the window appear
   };
 
   // --- LOGIC: GENERATE CHAPTERS 1-5 ---
@@ -129,7 +148,7 @@ export default function Home() {
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(22);
-    doc.text("SmartWriter Global Edition", 10, 20);
+    doc.text("Smart-Writer", 10, 20);
 
     doc.setFontSize(10);
     doc.setTextColor(0, 150, 0);
@@ -181,10 +200,10 @@ export default function Home() {
           <div className="max-w-5xl mx-auto text-center space-y-8 md:space-y-12">
             <div className="space-y-4">
               <h1 className="text-4xl md:text-7xl font-black text-white tracking-tighter leading-tight md:leading-[1.1]">
-                SmartWriter <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">Global Edition</span>
+                SmartWriter <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500"></span>
               </h1>
               <p className="text-slate-500 text-lg md:text-xl max-w-2xl mx-auto font-light">
-                Professional academic generation following university-specific handbooks[cite: 9, 10].
+                Professional academic generation following university-specific handbooks.
               </p>
             </div>
 
@@ -259,7 +278,7 @@ export default function Home() {
                     <div className="p-3 px-4 bg-green-500/10 border border-green-500/20 rounded-xl flex items-center gap-3">
                       <Shield className="text-green-500" size={18} />
                       <span className="text-xs text-green-200 font-bold uppercase tracking-wider">
-                        Verified Clean [cite: 7, 8]
+                        Verified Clean
                       </span>
                     </div>
                     <button
@@ -279,7 +298,7 @@ export default function Home() {
         </section>
 
         {/* PRICING SECTION */}
-        <section className="py-20 px-6 md:px-10 bg-white/[0.02] border-y border-white/5">
+        <section className="py-20 px-6 md:px-10 bg-white/2 border-y border-white/5">
           <div className="max-w-6xl mx-auto space-y-16">
             <div className="text-center">
               <h2 className="text-3xl md:text-4xl font-black text-white">Academic Marketplace </h2>
@@ -291,13 +310,13 @@ export default function Home() {
                 price="₦15,000"
                 featured
                 features={["Full Chapters 1-5", "Verified References ", "PDF Export"]}
-                onSelect={() => handlePayment(15000, "Standard")}
+                onSelect={() => handlePayment("Standard", 15000)}
               />
               <PricingCard
                 title="Pro"
                 price="₦35,000"
-                features={["All Standard", "Human Review [cite: 13]", "Presentation Slides"]}
-                onSelect={() => handlePayment(35000, "Pro")}
+                features={["All Standard", "Human Review", "Presentation Slides"]}
+                onSelect={() => handlePayment("Pro", 35000)}
               />
             </div>
           </div>
@@ -316,7 +335,15 @@ export default function Home() {
 }
 
 // PRICING COMPONENT
-function PricingCard({ title, price, features, featured, onSelect }: any) {
+interface PricingCardProps {
+  title: string;
+  price: string;
+  features: string[];
+  featured?: boolean;
+  onSelect: () => void;
+}
+
+function PricingCard({ title, price, features, featured, onSelect }: PricingCardProps) {
   return (
     <div className={`p-8 rounded-[2.5rem] border flex flex-col gap-6 ${featured ? 'bg-purple-600/10 border-purple-500' : 'bg-white/5 border-white/10'}`}>
       <h4 className="font-bold text-xl">{title}</h4>
