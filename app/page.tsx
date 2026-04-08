@@ -122,6 +122,8 @@ export default function Home() {
 
   const generateOutline = async () => {
     if (!topic) return toast.error("Please enter a research topic!");
+    if (!department) return toast.error("Please select a department!"); // Forces them to pick a faculty
+
     setLoading(true);
     try {
       const res = await fetch('/api/generate-outline', {
@@ -129,17 +131,26 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           topic,
-          faculty: "Networking and Cloud Computing",
-          level: "Undergraduate (Final Year)"
+          faculty: department, // FIXED: Now uses the dropdown value instead of hardcoding
+          level: "Undergraduate (Final Year)",
+          standard: schoolStandard // Added standard here too just in case your API needs it
         }),
       });
+
       const data = await res.json();
+
+      // Check if the API actually returned the sections
       if (data.sections) {
         setOutline(data.sections);
         toast.success("Research outline architected!");
+      } else {
+        // THIS CATCHES THE SILENT FAILURE
+        console.error("API returned an issue:", data);
+        toast.error(data.error || "The AI didn't return an outline. Check console.");
       }
     } catch (err) {
-      toast.error("System error. API rate limit likely reached.");
+      console.error("Fetch failed:", err);
+      toast.error("System error. API rate limit or Vercel timeout.");
     } finally {
       setLoading(false);
     }
