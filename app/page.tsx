@@ -25,7 +25,10 @@ export default function Home() {
   const [report, setReport] = useState("");
   const [writing, setWriting] = useState(false);
   const [schoolStandard, setSchoolStandard] = useState("Global Standard");
-  const [userPlan, setUserPlan] = useState("Basic");
+  // TEMPORARY BYPASS FOR SOMA SYNDICATE TESTING 
+  const [userPlan, setUserPlan] = useState("Pro");
+  const [department, setDepartment] = useState("");
+
 
   const saveToDatabase = async (reference: string, planName: string, amount: number, topic: string) => {
     try {
@@ -222,6 +225,22 @@ export default function Home() {
                   <option value="Covenant Standard">Covenant University Guide</option>
                 </select>
                 <div className="flex flex-col md:flex-row gap-2">
+                  <select
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white mb-4"
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                  >
+                    <option className="bg-slate-900 text-white" value="" disabled>Select your Department / Faculty...</option>
+                    <option className="bg-slate-900 text-white" value="Geology & Earth Sciences">Geology & Earth Sciences</option>
+                    <option className="bg-slate-900 text-white" value="Business & Finance">Business & Finance</option>
+                    <option className="bg-slate-900 text-white" value="Law & Legal Studies">Law & Legal Studies</option>
+                    <option className="bg-slate-900 text-white" value="Sociology & Humanities">Sociology & Humanities</option>
+                    <option className="bg-slate-900 text-white" value="Health & Medical Sciences">Health & Medical Sciences</option>
+                    <option className="bg-slate-900 text-white" value="Computer Science & IT">Computer Science & IT</option>
+                    <option className="bg-slate-900 text-white" value="Engineering">Engineering</option>
+                    <option className="bg-slate-900 text-white" value="Education">Education</option>
+                    <option className="bg-slate-900 text-white" value="General/Other">Other...</option>
+                  </select>
                   <input
                     className="flex-1 bg-transparent p-4 md:p-5 text-base md:text-lg outline-none placeholder:text-slate-700"
                     placeholder="Enter research topic..."
@@ -267,7 +286,7 @@ export default function Home() {
                     disabled={writing}
                     className="px-10 py-5 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-2xl font-black text-lg flex items-center gap-3 shadow-xl shadow-purple-500/20 hover:scale-105 transition-transform"
                   >
-                    {writing ? <Loader2 className="animate-spin" /> : <><FileText /> COMPILE FULL THESIS (₦15k)</>}
+                    {writing ? <Loader2 className="animate-spin" /> : <><FileText /> COMPILE FULL THESIS (SYNDICATE VIP ACCESS)</>}
                   </button>
                 </div>
               )}
@@ -298,6 +317,7 @@ export default function Home() {
         </section>
 
         {/* PRICING SECTION */}
+        {/* PRICING SECTION (HIDDEN FOR SYNDICATE TESTING) 
         <section className="py-20 px-6 md:px-10 bg-white/2 border-y border-white/5">
           <div className="max-w-6xl mx-auto space-y-16">
             <div className="text-center">
@@ -321,6 +341,7 @@ export default function Home() {
             </div>
           </div>
         </section>
+        */}
       </main>
 
       {/* 3. MOBILE BOTTOM NAVIGATION */}
@@ -330,7 +351,7 @@ export default function Home() {
         <Link href="/admin"><LayoutDashboard size={24} className="text-slate-500" /></Link>
         <Link href="/settings"><Settings size={24} className="text-slate-500" /></Link>
       </nav>
-    </div>
+    </div >
   );
 }
 
