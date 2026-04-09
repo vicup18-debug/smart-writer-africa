@@ -1,26 +1,27 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+
 export async function POST(req: Request) {
-    // 1. Log that the request was received
-    console.log("--- AI Outline Request Started ---");
+  console.log("--- AI Outline Request Started ---");
 
-    try {
-        // 2. Check if API Key exists
-        const apiKey = process.env.GEMINI_API_KEY;
-        if (!apiKey) {
-            console.error("ERROR: GEMINI_API_KEY is missing from .env.local");
-            return NextResponse.json({ error: "API Key Missing" }, { status: 500 });
-        }
+  // 1. Check if API Key exists (Moved outside the loop so it only checks once)
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.error("ERROR: GEMINI_API_KEY is missing from .env.local");
+    return NextResponse.json({ error: "API Key Missing" }, { status: 500 });
+  }
 
-        const { topic, faculty, level } = await req.json();
-        console.log(`Topic: ${topic} | Faculty: ${faculty}`);
+  const { topic, faculty, level } = await req.json();
+  console.log(`Topic: ${topic} | Faculty: ${faculty}`);
 
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  // Note: I left it as 2.5-flash based on your file, but remember to change 
+  // to "gemini-1.5-flash" here if 2.5 is still heavily congested!
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-        // 3. Precise Prompt to ensure valid JSON
-        const prompt = `You are a Senior Research Architect. 
+  const prompt = `You are a Senior Research Architect. 
     Create a professional 5-section report outline for a ${level} in the field of ${faculty}.
     Topic: ${topic}
     
@@ -36,27 +37,50 @@ export async function POST(req: Request) {
       ]
     }`;
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        let text = response.text();
+  // --- THE ARCHITECT'S RETRY LOOP STARTS HERE ---
+  let retries = 0;
 
-        // 4. Log the raw AI response for debugging
-        console.log("Raw AI Response received");
+  while (retries < 3) {
+    try {
+      // 2. Request Content
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      let text = response.text();
 
-        // 5. Clean the JSON (Removes ```json ... ``` if the AI includes it)
-        const cleanedJson = text.replace(/```json|```/g, "").trim();
+      console.log(`Raw AI Response received on attempt ${retries + 1}`);
 
-        const parsedData = JSON.parse(cleanedJson);
-        console.log("Success: JSON parsed correctly");
+      // 3. Clean the JSON
+      const cleanedJson = text.replace(/```json|```/g, "").trim();
+      const parsedData = JSON.parse(cleanedJson);
 
-        return NextResponse.json(parsedData);
+      console.log("Success: JSON parsed correctly");
+
+      // 4. Return data (this automatically breaks the loop and succeeds)
+      return NextResponse.json(parsedData);
 
     } catch (error: any) {
-        // 6. Detailed Error Logging
+      // 5. Check if the error is a Traffic Block (429) or Overload (503)
+      if (error?.status === 429 || error?.status === 503) {
+        retries++;
+        console.warn(`[API OVERLOADED] Retrying attempt ${retries}...`);
+
+        // Wait 2 seconds, then 4 seconds, then 8 seconds
+        await sleep(Math.pow(2, retries) * 1000);
+      } else {
+        // If it's a JSON parsing error or leaked key, crash normally
         console.error("DETAILED SERVER ERROR:", error.message);
         return NextResponse.json(
-            { error: "Failed to generate outline", details: error.message },
-            { status: 500 }
+          { error: "Failed to generate outline", details: error.message },
+          { status: 500 }
         );
+      }
     }
+  }
+
+  // 6. If we loop 3 times and still fail, tell the frontend gracefully
+  console.error("Engine failed after 3 retries due to Google server traffic.");
+  return NextResponse.json(
+    { error: "The AI servers are currently at maximum capacity. Please try again in a moment." },
+    { status: 503 }
+  );
 }
