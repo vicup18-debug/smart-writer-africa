@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+// Add this near the top of your files!
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   console.log("--- AI Report Generation Started ---");
