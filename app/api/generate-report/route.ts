@@ -30,8 +30,8 @@ export async function POST(req: Request) {
         `;
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    // Swapped to 1.5-flash for maximum stability during Syndicate testing
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // Swapped to gemini-2.5-flash for maximum stability during Syndicate testing
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const prompt = `
           You are an Autonomous Academic Architect. Generate a ${scope} for a project titled: "${topic}".
