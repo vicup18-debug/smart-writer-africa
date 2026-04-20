@@ -68,7 +68,7 @@ export async function POST(req: Request) {
         console.warn(`[API OVERLOADED] Retrying attempt ${retries}...`);
 
         // Wait 2 seconds, then 4 seconds, then 8 seconds
-        await sleep(Math.pow(2, retries) * 1000);
+        await sleep(Math.pow(3, retries) * 1000);
       } else {
         // If it's a JSON parsing error or leaked key, crash normally
         console.error("DETAILED SERVER ERROR:", error.message);

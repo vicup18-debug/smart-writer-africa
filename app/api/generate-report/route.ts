@@ -68,7 +68,7 @@ export async function POST(req: Request) {
           console.warn(`[API OVERLOADED] Retrying attempt ${retries}...`);
 
           // Wait 2 seconds, then 4 seconds, then 8 seconds
-          await sleep(Math.pow(2, retries) * 1000);
+          await sleep(Math.pow(3, retries) * 1000);
         } else {
           // Fatal error (bad prompt, blocked content, etc.)
           console.error("Fatal API Error during generation:", error);
