@@ -29,7 +29,6 @@ export default function Home() {
   const [userPlan, setUserPlan] = useState("Pro");
   const [department, setDepartment] = useState("");
 
-
   const saveToDatabase = async (reference: string, planName: string, amount: number, topic: string) => {
     try {
       const { supabase } = await import('@/lib/supabase');
@@ -282,8 +281,9 @@ export default function Home() {
                 ))}
               </div>
 
-              {!report && (
-                <div className="flex flex-col md:flex-row items-center justify-center gap-4">
+              {/* BUTTON GROUP FIXED HERE */}
+              <div className="flex flex-col md:flex-row items-center justify-center gap-4">
+                {!report && (
                   <button
                     onClick={() => generateFullReport(true)}
                     disabled={writing}
@@ -291,16 +291,16 @@ export default function Home() {
                   >
                     {writing ? <Loader2 className="animate-spin" /> : "FREE SAMPLE (CH 1)"}
                   </button>
+                )}
 
-                  <button
-                    onClick={() => generateFullReport(false)}
-                    disabled={writing}
-                    className="px-10 py-5 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-2xl font-black text-lg flex items-center gap-3 shadow-xl shadow-purple-500/20 hover:scale-105 transition-transform"
-                  >
-                    {writing ? <Loader2 className="animate-spin" /> : <><FileText /> COMPILE FULL THESIS (SYNDICATE VIP ACCESS)</>}
-                  </button>
-                </div>
-              )}
+                <button
+                  onClick={() => generateFullReport(false)}
+                  disabled={writing}
+                  className="px-10 py-5 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-2xl font-black text-lg flex items-center gap-3 shadow-xl shadow-purple-500/20 hover:scale-105 transition-transform"
+                >
+                  {writing ? <Loader2 className="animate-spin" /> : <><FileText /> COMPILE FULL THESIS (SYNDICATE VIP ACCESS)</>}
+                </button>
+              </div>
 
               {report && (
                 <div className="mt-10 p-6 md:p-12 bg-white/5 border border-white/10 rounded-[2rem]">
@@ -327,7 +327,6 @@ export default function Home() {
           )}
         </section>
 
-        {/* PRICING SECTION */}
         {/* PRICING SECTION (HIDDEN FOR SYNDICATE TESTING) 
         <section className="py-20 px-6 md:px-10 bg-white/2 border-y border-white/5">
           <div className="max-w-6xl mx-auto space-y-16">
