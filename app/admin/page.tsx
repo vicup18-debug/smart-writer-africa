@@ -14,11 +14,27 @@ export default function AdminDashboard() {
     const [stats, setStats] = useState({ users: 0, revenue: 0, projects: 0 });
     const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
 
-    // FETCH REAL-TIME ADMIN DATA FROM SUPABASE
+    // FETCH REAL-TIME ADMIN DATA FROM SUPABASE WITH AUTHENTICATION GUARD
     useEffect(() => {
         const fetchAdminData = async () => {
             try {
                 const { supabase } = await import('@/lib/supabase');
+                const { data: { session } } = await supabase.auth.getSession();
+
+                if (!session) {
+                    router.push('/auth');
+                    return;
+                }
+
+                // Admin Guard: Must have an @smartwriter.africa email, or metadata is_admin true
+                const email = session.user.email || "";
+                const isAdmin = email.endsWith("@smartwriter.africa") || session.user.user_metadata?.is_admin === true;
+
+                if (!isAdmin) {
+                    toast.error("Access Denied: Admin privileges required.");
+                    router.push('/');
+                    return;
+                }
 
                 // 1. Fetch all successful orders to calculate revenue
                 const { data: orderData, error: orderError } = await supabase
@@ -60,7 +76,7 @@ export default function AdminDashboard() {
         // REFRESH DATA EVERY 30 SECONDS FOR "LIVE" FEEL
         const interval = setInterval(fetchAdminData, 30000);
         return () => clearInterval(interval);
-    }, []);
+    }, [router]);
 
     return (
         <div className="min-h-screen bg-[#050608] text-slate-200 selection:bg-blue-500/30">

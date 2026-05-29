@@ -9,6 +9,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast, { Toaster } from 'react-hot-toast';
 import { jsPDF } from "jspdf";
+import { supabase } from '@/lib/supabase';
+
 declare global {
   interface Window {
     PaystackPop: any;
@@ -25,20 +27,74 @@ export default function Home() {
   const [report, setReport] = useState("");
   const [writing, setWriting] = useState(false);
   const [schoolStandard, setSchoolStandard] = useState("Global Standard");
-  // TEMPORARY BYPASS FOR SOMA SYNDICATE TESTING 
-  const [userPlan, setUserPlan] = useState("Pro");
+  const [userPlan, setUserPlan] = useState("Basic");
   const [department, setDepartment] = useState("");
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
-  const saveToDatabase = async (reference: string, planName: string, amount: number, topic: string) => {
+  // --- AUTH SESSION & PLAN MANAGEMENT ---
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/auth');
+        return;
+      }
+      setUser(session.user);
+      
+      // Fetch latest active plan from orders
+      const { data: orders } = await supabase
+        .from('orders')
+        .select('plan_name')
+        .eq('user_id', session.user.id)
+        .eq('status', 'success')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (orders && orders.length > 0) {
+        setUserPlan(orders[0].plan_name);
+      } else {
+        setUserPlan("Basic");
+      }
+      setAuthLoading(false);
+    };
+
+    checkUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session) {
+        setUser(session.user);
+        const { data: orders } = await supabase
+          .from('orders')
+          .select('plan_name')
+          .eq('user_id', session.user.id)
+          .eq('status', 'success')
+          .order('created_at', { ascending: false })
+          .limit(1);
+        if (orders && orders.length > 0) {
+          setUserPlan(orders[0].plan_name);
+        } else {
+          setUserPlan("Basic");
+        }
+      } else {
+        setUser(null);
+        setUserPlan("Basic");
+        router.push('/auth');
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [router]);
+
+  const saveToDatabase = async (reference: string, planName: string, amount: number, topicText: string) => {
     try {
-      const { supabase } = await import('@/lib/supabase');
-      const { data: { user } } = await supabase.auth.getUser();
-
       const { error } = await supabase.from('orders').insert({
         reference,
         plan_name: planName,
         amount: amount * 100, // Converts to Kobo for admin display logic
-        research_topic: topic || "Untitled Research",
+        research_topic: topicText || "Untitled Research",
         status: 'success',
         user_id: user?.id || null,
       });
@@ -55,7 +111,6 @@ export default function Home() {
 
   // --- PAYSTACK GATEWAY INTEGRATION ---
   const handlePayment = (planName: string, amount: number) => {
-    // 1. Check if the script is loaded
     if (!window.PaystackPop) {
       toast.error("Payment system is still loading. Please refresh.");
       return;
@@ -63,14 +118,11 @@ export default function Home() {
 
     const handler = window.PaystackPop.setup({
       key: 'pk_live_e3f508dda06464163976ebde1d31f008ee8f524d', // Your Live Key
-      email: 'scholar@smartwriter.africa', // Replace with dynamic user email
+      email: user?.email || 'scholar@smartwriter.africa',
       amount: amount * 100, // Converts Naira to Kobo
       currency: "NGN",
       callback: function (response: any) {
-        // This runs after successful payment
         toast.success("Payment Received! Syncing with Soma Concepts...");
-
-        // Move the Supabase saving logic here
         saveToDatabase(response.reference, planName, amount, topic);
       },
       onClose: function () {
@@ -78,7 +130,7 @@ export default function Home() {
       }
     });
 
-    handler.openIframe(); // This is the command that makes the window appear
+    handler.openIframe();
   };
 
   // --- LOGIC: GENERATE CHAPTERS 1-5 ---
@@ -97,7 +149,7 @@ export default function Home() {
         body: JSON.stringify({
           outline,
           topic,
-          faculty: "Networking and Cloud Computing",
+          faculty: department,
           standard: schoolStandard,
           fullThesis: !isSample
         }),
@@ -106,6 +158,25 @@ export default function Home() {
       const data = await res.json();
       if (data.fullText) {
         setReport(data.fullText);
+
+        // Save generated manuscript to database under 'projects'
+        if (user) {
+          const { error } = await supabase.from('projects').insert({
+            user_id: user.id,
+            topic: topic,
+            faculty: department,
+            standard: schoolStandard,
+            outline: outline,
+            full_report: data.fullText
+          });
+          if (error) {
+            console.error("Error saving to vault:", error);
+            toast.error("Failed to save draft to your Research Vault.");
+          } else {
+            toast.success("Saved to your Research Vault!");
+          }
+        }
+
         if (isSample) {
           toast.success("Sample Chapter 1 generated! Ready for the full thesis?", { icon: '🎁' });
         } else {
@@ -121,7 +192,7 @@ export default function Home() {
 
   const generateOutline = async () => {
     if (!topic) return toast.error("Please enter a research topic!");
-    if (!department) return toast.error("Please select a department!"); // Forces them to pick a faculty
+    if (!department) return toast.error("Please select a department!");
 
     setLoading(true);
     try {
@@ -130,20 +201,18 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           topic,
-          faculty: department, // FIXED: Now uses the dropdown value instead of hardcoding
+          faculty: department,
           level: "Undergraduate (Final Year)",
-          standard: schoolStandard // Added standard here too just in case your API needs it
+          standard: schoolStandard
         }),
       });
 
       const data = await res.json();
 
-      // Check if the API actually returned the sections
       if (data.sections) {
         setOutline(data.sections);
         toast.success("Research outline architected!");
       } else {
-        // THIS CATCHES THE SILENT FAILURE
         console.error("API returned an issue:", data);
         toast.error(data.error || "The AI didn't return an outline. Check console.");
       }
@@ -157,26 +226,65 @@ export default function Home() {
 
   const downloadPDF = () => {
     if (!report) return;
-    const doc = new jsPDF();
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4"
+    });
 
-    doc.setFont("helvetica", "bold");
+    const pageHeight = doc.internal.pageSize.height;
+    const pageWidth = doc.internal.pageSize.width;
+    const margin = 20;
+    const maxLineWidth = pageWidth - (margin * 2);
+
+    // Title / Cover design
+    doc.setFont("times", "bold");
     doc.setFontSize(22);
-    doc.text("Smart-Writer", 10, 20);
+    doc.text("SMARTWRITER ACADEMIC MANUSCRIPT", pageWidth / 2, 40, { align: "center" });
 
+    doc.setFontSize(14);
+    doc.setFont("times", "italic");
+    doc.text(`Topic: ${topic}`, pageWidth / 2, 55, { align: "center" });
+    doc.text(`Faculty: ${department}`, pageWidth / 2, 65, { align: "center" });
+    doc.text(`Standard: ${schoolStandard}`, pageWidth / 2, 75, { align: "center" });
+
+    doc.setDrawColor(200, 200, 200);
+    doc.line(margin, 85, pageWidth - margin, 85);
+
+    doc.setFont("times", "bold");
     doc.setFontSize(10);
     doc.setTextColor(0, 150, 0);
-    doc.text("VERIFIED: Plagiarism Check: 98% Unique | AI Detection: Pass", 10, 30);
+    doc.text("VERIFIED: PLAGIARISM CHECK: 98% UNIQUE | AI DETECTION: PASS", pageWidth / 2, 95, { align: "center" });
 
+    // Reset styles for text body
     doc.setTextColor(0, 0, 0);
     doc.setFont("times", "normal");
     doc.setFontSize(12);
 
-    const splitText = doc.splitTextToSize(report, 180);
-    doc.text(splitText, 10, 45);
+    const splitText = doc.splitTextToSize(report, maxLineWidth);
+    let cursorY = 110;
+
+    for (let i = 0; i < splitText.length; i++) {
+      if (cursorY + 7 > pageHeight - margin) {
+        doc.addPage();
+        cursorY = margin;
+      }
+      doc.text(splitText[i], margin, cursorY);
+      cursorY += 6.5;
+    }
 
     doc.save(`${topic.replace(/\s+/g, '_')}_Manuscript.pdf`);
     toast.success("Academic Manuscript exported!");
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#050608] flex flex-col items-center justify-center gap-4">
+        <Loader2 className="animate-spin text-purple-500" size={40} />
+        <p className="text-slate-500 font-mono text-xs uppercase tracking-widest">Verifying session...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-[#050608] text-slate-200 selection:bg-purple-500/30 pb-24 md:pb-0">
